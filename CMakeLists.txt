@@ -71,6 +71,20 @@ set_target_properties(frameflow PROPERTIES
     VISIBILITY_INLINES_HIDDEN YES
 )
 
+set(FRAMEFLOW_COMPATIBILITY_LIBRARY_NAME "" CACHE STRING
+    "Optional additional shared-library filename copied beside the frameflow target after build"
+)
+if(FRAMEFLOW_COMPATIBILITY_LIBRARY_NAME)
+    add_custom_command(
+        TARGET frameflow
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:frameflow>
+            "${CMAKE_CURRENT_BINARY_DIR}/${FRAMEFLOW_COMPATIBILITY_LIBRARY_NAME}"
+        COMMENT "Updating optional frameflow compatibility library alias"
+    )
+endif()
+
 frameflow_enable_cesium()
 
 if(FRAMEFLOW_WITH_CESIUM)

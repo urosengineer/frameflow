@@ -3088,6 +3088,13 @@ private:
         return (1.0 - (std::asinh(std::tan(latitude_radians)) / kPi)) * 0.5;
     }
 
+    static int visible_tile_cap_for_axis(const int pixels) noexcept {
+        // Wide Watch Desk viewports can legitimately need more than the old
+        // fixed 18x14 tile window at low zoom. Keep a cap, but scale it with
+        // the render target so ultrawide resize does not clip the raster edge.
+        return std::max(18, ((std::max(1, pixels) + 127) / 128) + 8);
+    }
+
     int estimate_zoom(const RenderedGlobeScene::CameraState& camera) const noexcept {
         const double horizontal_fov = kHorizontalFieldOfViewDegrees * kDegreesToRadians;
         const double ground_span_meters =
@@ -3133,8 +3140,8 @@ private:
         const int y_end = std::clamp(latitude_to_tile_y_floor(south, z) + 1, 0, n - 1);
 
         std::vector<TileKey> result;
-        const int max_x_tiles = std::min(n, 18);
-        const int max_y_tiles = std::min(n, 14);
+        const int max_x_tiles = std::min(n, visible_tile_cap_for_axis(width_));
+        const int max_y_tiles = std::min(n, visible_tile_cap_for_axis(height_));
         const int clamped_x_end = std::min(x_end, x_start + max_x_tiles - 1);
         const int clamped_y_end = std::min(y_end, y_start + max_y_tiles - 1);
         result.reserve(static_cast<std::size_t>(
