@@ -1,0 +1,38 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+
+# Binaries
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+/tests/host_kotlin/.gradle/
+/tests/host_kotlin/.kotlin/
+/tests/host_kotlin/build/
+
+# Local/generated runtime assets. Public source distributions do not ship
+# boundary overlay datasets by default.
+assets/
+
+# Local pinned dependency checkout used by the Cesium build preset.
+third_party/cesium-native/
+
+# OS files
+.DS_Store
+Thumbs.db

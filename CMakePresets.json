@@ -1,0 +1,98 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FRAMEFLOW_WITH_CESIUM": "OFF",
+        "FRAMEFLOW_BUILD_EXAMPLES": "ON",
+        "FRAMEFLOW_BUILD_TESTS": "ON",
+        "FRAMEFLOW_WARNINGS_AS_ERRORS": "OFF"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "FRAMEFLOW_WITH_CESIUM": "OFF",
+        "FRAMEFLOW_BUILD_EXAMPLES": "ON",
+        "FRAMEFLOW_BUILD_TESTS": "ON",
+        "FRAMEFLOW_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "cesium-dev",
+      "displayName": "Cesium Development",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/cesium-dev",
+      "cacheVariables": {
+        "FRAMEFLOW_WITH_CESIUM": "ON",
+        "FRAMEFLOW_CESIUM_USE_EZVCPKG": "ON",
+        "FRAMEFLOW_CESIUM_NATIVE_SOURCE_DIR": "${sourceDir}/third_party/cesium-native"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    },
+    {
+      "name": "cesium-dev",
+      "configurePreset": "cesium-dev"
+    },
+    {
+      "name": "cesium-smoke",
+      "configurePreset": "cesium-dev",
+      "targets": [
+        "frameflow_cesium_dependency_smoke"
+      ]
+    },
+    {
+      "name": "cesium-globe-smoke",
+      "configurePreset": "cesium-dev",
+      "targets": [
+        "frameflow_cesium_globe_smoke"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "cesium-dev",
+      "configurePreset": "cesium-dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

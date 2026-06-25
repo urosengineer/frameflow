@@ -1,0 +1,59 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.0.21'
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.0.21'
+    id 'org.jetbrains.compose' version '1.7.3'
+}
+
+repositories {
+    mavenCentral()
+    google()
+    maven { url 'https://maven.pkg.jetbrains.space/public/p/compose/dev' }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+    implementation "net.java.dev.jna:jna:5.14.0"
+    implementation compose.desktop.currentOs
+    implementation compose.material3
+
+    testImplementation "org.junit.jupiter:junit-jupiter:5.10.3"
+    testImplementation "org.jetbrains.kotlin:kotlin-test"
+}
+
+def repoRoot = file("${projectDir}/../..")
+def nativeLibPath = file("${repoRoot}/build/dev/libframeflow.so")
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions.jvmTarget = "21"
+}
+
+tasks.register("configureNativeDebug", Exec) {
+    workingDir repoRoot
+    commandLine "cmake", "--preset", "dev"
+}
+
+tasks.register("buildNativeDebug", Exec) {
+    dependsOn "configureNativeDebug"
+    workingDir repoRoot
+    commandLine "cmake", "--build", "--preset", "dev"
+}
+
+compose.desktop {
+    application {
+        mainClass = "frameflow.host.FrameflowHostWorkbenchAppKt"
+    }
+}
+
+test {
+    dependsOn "buildNativeDebug"
+    useJUnitPlatform()
+    systemProperty "frameflow.native.lib", nativeLibPath.absolutePath
+}
+
+tasks.register("runHostWorkbench", JavaExec) {
+    dependsOn "buildNativeDebug"
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "frameflow.host.FrameflowHostWorkbenchAppKt"
+    systemProperty "frameflow.native.lib", nativeLibPath.absolutePath
+    systemProperty "frameflow.host.packagedNativeDir", nativeLibPath.parentFile.absolutePath
+}
