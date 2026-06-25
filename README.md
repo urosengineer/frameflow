@@ -216,6 +216,7 @@ political boundary semantics.
 
 ## License
 
-Frameflow is licensed under the Apache License, Version 2.0. See `LICENSE`.
+Frameflow is licensed under the [Apache License 2.0](LICENSE).
 
-Third-party and provider notes are summarized in `THIRD_PARTY_NOTICES.md`.
+Third-party and provider notes are summarized in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
