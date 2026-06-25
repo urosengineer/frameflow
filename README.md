@@ -14,6 +14,20 @@ diagnostics, and selection events.
 Frameflow is a technical preview. The Linux/offscreen path is the first
 validated runtime path. APIs may change before a stable release.
 
+## Why Frameflow Exists
+
+Frameflow started from a practical need for a lightweight native globe and
+rendering layer that can be embedded into newsroom, broadcast, and geographic
+discovery workflows without moving the host application's domain model,
+networking, authentication, persistence, or UI composition into the renderer.
+
+The goal is to keep the native boundary small: host applications keep their
+product logic and UI, while Frameflow provides native scene state, rendering,
+diagnostics, camera/input handling, and selection feedback.
+
+Frameflow is intended as an embedded geographic discovery surface, not as a full
+application framework.
+
 ## Preview
 
 ![Frameflow globe preview](media/frameflow-preview.png)
