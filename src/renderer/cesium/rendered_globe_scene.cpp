@@ -38,9 +38,11 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <deque>
 #include <exception>
 #include <filesystem>
 #include <map>
@@ -372,8 +374,12 @@ std::string normalize_provider_id(std::string value) {
     return value;
 }
 
-std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::string* status_message) {
-    const auto requested_provider = normalize_provider_id(env_string(kBasemapProviderEnv).value_or("auto"));
+std::optional<BasemapProviderConfig> basemap_provider_from_request(
+    std::string requested_provider,
+    std::string requested_style_id,
+    std::string* status_message
+) {
+    requested_provider = normalize_provider_id(std::move(requested_provider));
     const auto maptiler_key = env_string(kMapTilerApiKeyEnv);
     const auto stadia_key = env_string(kStadiaApiKeyEnv);
     const auto google_key = env_string(kGoogleMapsApiKeyEnv);
@@ -395,7 +401,9 @@ std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::stri
             .kind = BasemapProviderKind::MapTilerRaster,
             .provider_id = "maptiler-raster",
             .api_key = *maptiler_key,
-            .style_id = env_string(kMapTilerMapIdEnv).value_or("streets-v4"),
+            .style_id = requested_style_id.empty()
+                ? env_string(kMapTilerMapIdEnv).value_or("streets-v4")
+                : std::move(requested_style_id),
             .hidpi = hidpi
         };
     }
@@ -409,7 +417,9 @@ std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::stri
             .kind = BasemapProviderKind::StadiaRaster,
             .provider_id = "stadia-raster",
             .api_key = *stadia_key,
-            .style_id = env_string(kStadiaStyleEnv).value_or("alidade_smooth_dark"),
+            .style_id = requested_style_id.empty()
+                ? env_string(kStadiaStyleEnv).value_or("alidade_smooth_dark")
+                : std::move(requested_style_id),
             .hidpi = hidpi
         };
     }
@@ -427,7 +437,7 @@ std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::stri
             .api_key = *google_key,
             .language = env_string(kGoogleMapsLanguageEnv).value_or("en-US"),
             .region = env_string(kGoogleMapsRegionEnv).value_or("US"),
-            .style_id = "satellite",
+            .style_id = requested_style_id.empty() ? "satellite" : std::move(requested_style_id),
             .hidpi = hidpi
         };
     }
@@ -436,6 +446,24 @@ std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::stri
         *status_message = "provider=none status=disabled missing_env=FRAMEFLOW_MAPTILER_API_KEY";
     }
     return std::nullopt;
+}
+
+std::optional<BasemapProviderConfig> basemap_provider_from_environment(std::string* status_message) {
+    return basemap_provider_from_request(
+        env_string(kBasemapProviderEnv).value_or("auto"),
+        std::string{},
+        status_message
+    );
+}
+
+std::optional<BasemapProviderConfig> basemap_provider_from_options(
+    const RenderedGlobeScene::Options& options,
+    std::string* status_message
+) {
+    if (options.basemap_provider_id.empty()) {
+        return basemap_provider_from_environment(status_message);
+    }
+    return basemap_provider_from_request(options.basemap_provider_id, options.basemap_style_id, status_message);
 }
 
 std::uint64_t sqlite_cache_max_items_from_bytes(std::uint64_t max_cache_bytes);
@@ -1328,6 +1356,87 @@ void draw_country_boundaries(
 
 } // namespace
 
+class JoiningTaskProcessor final : public CesiumAsync::ITaskProcessor {
+public:
+    JoiningTaskProcessor() {
+        const auto worker_count = default_worker_count();
+        workers_.reserve(worker_count);
+        for (std::size_t index = 0u; index < worker_count; ++index) {
+            workers_.emplace_back([this]() {
+                worker_loop();
+            });
+        }
+    }
+
+    ~JoiningTaskProcessor() override {
+        shutdown();
+    }
+
+    void startTask(std::function<void()> task) override {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) {
+                return;
+            }
+            tasks_.push_back(std::move(task));
+        }
+        condition_.notify_one();
+    }
+
+    void shutdown() noexcept {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        condition_.notify_all();
+        for (auto& worker : workers_) {
+            if (worker.joinable()) {
+                worker.join();
+            }
+        }
+        workers_.clear();
+    }
+
+private:
+    static std::size_t default_worker_count() noexcept {
+        const auto hardware_threads = std::thread::hardware_concurrency();
+        if (hardware_threads == 0u) {
+            return 4u;
+        }
+        return std::clamp<std::size_t>(hardware_threads / 2u, 4u, 12u);
+    }
+
+    void worker_loop() noexcept {
+        while (true) {
+            std::function<void()> task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                condition_.wait(lock, [this]() {
+                    return stopping_ || !tasks_.empty();
+                });
+                if (stopping_ && tasks_.empty()) {
+                    return;
+                }
+                task = std::move(tasks_.front());
+                tasks_.pop_front();
+            }
+
+            try {
+                task();
+            } catch (...) {
+                // Cesium tasks must not terminate the process if a request
+                // completes during renderer teardown.
+            }
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable condition_;
+    std::deque<std::function<void()>> tasks_;
+    std::vector<std::thread> workers_;
+    bool stopping_ = false;
+};
+
 class GoogleTilesetRuntime {
 public:
     struct Snapshot {
@@ -1386,6 +1495,9 @@ public:
     }
 
     ~GoogleTilesetRuntime() {
+        if (task_processor_) {
+            task_processor_->shutdown();
+        }
         destroy_raster_clip_shader();
     }
 
@@ -1756,15 +1868,6 @@ private:
         }
     };
 
-    class BackgroundTaskProcessor final : public CesiumAsync::ITaskProcessor {
-    public:
-        void startTask(std::function<void()> task) override {
-            std::thread([task = std::move(task)]() mutable {
-                task();
-            }).detach();
-        }
-    };
-
     class PrepareRendererResources final : public Cesium3DTilesSelection::IPrepareRendererResources {
     public:
         explicit PrepareRendererResources(GoogleTilesetRuntime& owner) noexcept : owner_(owner) {}
@@ -2088,7 +2191,7 @@ private:
         : basemap_config_(std::move(basemap_config)),
           scene_options_(std::move(scene_options)),
           debug_options_(debug_options),
-          task_processor_(std::make_shared<BackgroundTaskProcessor>()),
+          task_processor_(std::make_shared<JoiningTaskProcessor>()),
           async_system_(task_processor_),
           asset_accessor_(create_asset_accessor()),
           credit_system_(std::make_shared<CesiumUtility::CreditSystem>()),
@@ -2742,7 +2845,7 @@ void main() {
     RenderedGlobeScene::Options scene_options_;
     DebugOptions debug_options_;
     std::string asset_cache_status_ = "disabled";
-    std::shared_ptr<BackgroundTaskProcessor> task_processor_;
+    std::shared_ptr<JoiningTaskProcessor> task_processor_;
     CesiumAsync::AsyncSystem async_system_;
     std::shared_ptr<CesiumAsync::IAssetAccessor> asset_accessor_;
     std::shared_ptr<CesiumUtility::CreditSystem> credit_system_;
@@ -2825,6 +2928,10 @@ public:
     }
 
     ~UniformRasterGlobeLayer() {
+        state_.reset();
+        if (task_processor_) {
+            task_processor_->shutdown();
+        }
         for (auto& [key, tile] : tiles_) {
             (void)key;
             if (tile.texture_id != 0u) {
@@ -2989,15 +3096,6 @@ public:
     }
 
 private:
-    class TaskProcessor final : public CesiumAsync::ITaskProcessor {
-    public:
-        void startTask(std::function<void()> task) override {
-            std::thread([task = std::move(task)]() mutable {
-                task();
-            }).detach();
-        }
-    };
-
     enum class TileState {
         Loading,
         Ready,
@@ -3044,7 +3142,7 @@ private:
         const RenderedGlobeScene::Options& scene_options
     )
         : basemap_config_(std::move(basemap_config)),
-          task_processor_(std::make_shared<TaskProcessor>()),
+          task_processor_(std::make_shared<JoiningTaskProcessor>()),
           async_system_(task_processor_),
           asset_accessor_(create_frameflow_asset_accessor(scene_options, &asset_cache_status_)) {}
 
@@ -3452,7 +3550,7 @@ private:
 
     BasemapProviderConfig basemap_config_;
     std::string asset_cache_status_ = "disabled";
-    std::shared_ptr<TaskProcessor> task_processor_;
+    std::shared_ptr<JoiningTaskProcessor> task_processor_;
     CesiumAsync::AsyncSystem async_system_;
     std::shared_ptr<CesiumAsync::IAssetAccessor> asset_accessor_;
     std::shared_ptr<LifetimeState> state_ = std::make_shared<LifetimeState>();
@@ -3481,7 +3579,7 @@ RenderedGlobeScene::RenderedGlobeScene(CesiumGeospatial::Cartographic initial_ca
     : home_camera_(initial_camera),
       camera_(initial_camera),
       cartography_dataset_(frameflow::renderer::cartography::CartographyDatasetLoader::load_default()) {
-    auto basemap_config = basemap_provider_from_environment(&imagery_runtime_status_);
+    auto basemap_config = basemap_provider_from_options(options, &imagery_runtime_status_);
     if (!basemap_config.has_value()) {
         return;
     }

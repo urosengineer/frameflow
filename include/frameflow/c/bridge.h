@@ -96,6 +96,11 @@ typedef struct frameflow_options {
     const char* log_level;
 } frameflow_options;
 
+typedef struct frameflow_basemap_config {
+    const char* provider_id;
+    const char* style_id;
+} frameflow_basemap_config;
+
 typedef enum frameflow_surface_backend {
     FRAMEFLOW_SURFACE_BACKEND_AUTO = 0,
     FRAMEFLOW_SURFACE_BACKEND_OFFSCREEN_BITMAP = 1,
@@ -374,6 +379,10 @@ FRAMEFLOW_API frameflow_result frameflow_engine_set_points(
 FRAMEFLOW_API frameflow_result frameflow_engine_set_filters(
     frameflow_engine* engine,
     const frameflow_filter* filter
+);
+FRAMEFLOW_API frameflow_result frameflow_engine_set_basemap(
+    frameflow_engine* engine,
+    const frameflow_basemap_config* basemap
 );
 FRAMEFLOW_API uint64_t frameflow_engine_point_count(const frameflow_engine* engine);
 FRAMEFLOW_API frameflow_result frameflow_engine_focus_location(

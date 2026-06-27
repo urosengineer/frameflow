@@ -274,7 +274,7 @@ void lifecycle_starts_uninitialized_with_version_surface() {
     expect(frameflow_engine_version_minor() == 1, "engine minor version should be 1");
     expect(frameflow_engine_version_patch() == 0, "engine patch version should be 0");
     expect(frameflow_command_version_major() == 2, "command major version should be 2");
-    expect(frameflow_command_version_minor() == 8, "command minor version should be 8");
+    expect(frameflow_command_version_minor() == 9, "command minor version should be 9");
     expect(
         frameflow_engine_state(engine) == FRAMEFLOW_LIFECYCLE_UNINITIALIZED,
         "engine should start in UNINITIALIZED state"
@@ -297,7 +297,7 @@ void runtime_info_and_compatibility_helpers_fail_fast() {
     expect(runtime_info.engine_version_minor == 1, "runtime info should expose engine minor version");
     expect(runtime_info.engine_version_patch == 0, "runtime info should expose engine patch version");
     expect(runtime_info.command_version_major == 2, "runtime info should expose command major version");
-    expect(runtime_info.command_version_minor == 8, "runtime info should expose command minor version");
+    expect(runtime_info.command_version_minor == 9, "runtime info should expose command minor version");
 
     frameflow_runtime_info compatibility_info{};
     expect(
@@ -371,7 +371,7 @@ void initialize_requires_callback_sink_and_dispatches_ready_event() {
     expect(tracker.last_ready.engine_version_minor == 1, "ready callback should include engine minor version");
     expect(tracker.last_ready.engine_version_patch == 0, "ready callback should include engine patch version");
     expect(tracker.last_ready.command_version_major == 2, "ready callback should include command major version");
-    expect(tracker.last_ready.command_version_minor == 8, "ready callback should include command minor version");
+    expect(tracker.last_ready.command_version_minor == 9, "ready callback should include command minor version");
 
     frameflow_engine_destroy(engine);
 }
@@ -1111,7 +1111,7 @@ void invalid_usage_dispatches_error_events_and_dispose_clears_callbacks() {
     expect(tracker.last_error.bridge_abi_version == 2, "error callback should include ABI version");
     expect(tracker.last_error.engine_version_major == 0, "error callback should include engine major version");
     expect(tracker.last_error.command_version_major == 2, "error callback should include command major version");
-    expect(tracker.last_error.command_version_minor == 8, "error callback should include command minor version");
+    expect(tracker.last_error.command_version_minor == 9, "error callback should include command minor version");
     expect(
         tracker.last_error_message.find("surface handle") != std::string::npos,
         "error message should mention the missing surface handle"

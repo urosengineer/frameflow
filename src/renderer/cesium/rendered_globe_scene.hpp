@@ -39,6 +39,8 @@ public:
     struct Options {
         std::string tile_cache_path;
         std::uint64_t max_tile_cache_bytes = 0u;
+        std::string basemap_provider_id;
+        std::string basemap_style_id;
     };
 
     struct CartographyRenderStats {

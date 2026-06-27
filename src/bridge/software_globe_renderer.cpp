@@ -623,6 +623,8 @@ void ensure_cesium_offscreen_renderer(frameflow_engine* engine) {
         frameflow::renderer::cesium::RenderedGlobeScene::Options{
             .tile_cache_path = engine->tile_cache_path,
             .max_tile_cache_bytes = engine->max_tile_cache_bytes,
+            .basemap_provider_id = engine->basemap_provider_id,
+            .basemap_style_id = engine->basemap_style_id,
         },
         &error_message
     );

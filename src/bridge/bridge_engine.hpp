@@ -112,6 +112,8 @@ struct frameflow_engine {
     std::string tile_cache_path;
     std::uint64_t max_tile_cache_bytes{};
     std::string log_level{"info"};
+    std::string basemap_provider_id;
+    std::string basemap_style_id;
     frameflow_result last_error_code{FRAMEFLOW_RESULT_OK};
     std::string last_error_message;
     bool last_error_recoverable{false};

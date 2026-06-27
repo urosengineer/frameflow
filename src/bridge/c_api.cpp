@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <memory>
 #include <cstdint>
 #include <cstdlib>
@@ -198,6 +199,8 @@ void refresh_diagnostics(frameflow_engine* engine, const bool count_update = tru
         << " theme=" << engine->theme
         << " tile_cache_bytes=" << engine->max_tile_cache_bytes
         << " log_level=" << engine->log_level
+        << " basemap_provider=" << (engine->basemap_provider_id.empty() ? "env" : engine->basemap_provider_id)
+        << " basemap_style=" << (engine->basemap_style_id.empty() ? "env" : engine->basemap_style_id)
         << " points=" << engine->engine.point_count()
         << " pending_events=" << engine->pending_events.size()
         << " pending_events_high_watermark=" << engine->pending_events_high_watermark
@@ -357,6 +360,37 @@ void apply_options(frameflow_engine* engine, const frameflow_options& options) {
     engine->log_level = options.log_level != nullptr && options.log_level[0] != '\0'
         ? options.log_level
         : "info";
+}
+
+std::string optional_c_string(const char* value) {
+    return value != nullptr ? std::string(value) : std::string{};
+}
+
+std::string normalize_basemap_provider(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](const unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+bool is_supported_basemap_provider(const std::string& provider_id) {
+    return provider_id == "maptiler" ||
+        provider_id == "maptiler-raster" ||
+        provider_id == "stadia" ||
+        provider_id == "stadia-raster" ||
+        provider_id == "google" ||
+        provider_id == "google-satellite" ||
+        provider_id == "google-maps-satellite";
+}
+
+void reset_offscreen_renderer_for_basemap(frameflow_engine* engine) {
+    if (engine == nullptr) {
+        return;
+    }
+#ifdef FRAMEFLOW_HAS_CESIUM_OFFSCREEN_SUPPORT
+    engine->cesium_offscreen_renderer_attempted = false;
+    engine->cesium_offscreen_renderer.reset();
+#endif
 }
 
 void remember_surface_target(
@@ -1275,6 +1309,53 @@ frameflow_result frameflow_engine_set_filters(
         engine->engine.set_filter(copy_filter(*filter));
         clear_error(engine);
         sync_native_surface_runtime_scene(engine);
+        refresh_offscreen_frame(engine);
+        refresh_diagnostics(engine);
+        return FRAMEFLOW_RESULT_OK;
+    });
+}
+
+frameflow_result frameflow_engine_set_basemap(
+    frameflow_engine* engine,
+    const frameflow_basemap_config* basemap
+) {
+    return guard_result(engine, "engine_set_basemap", [&]() -> frameflow_result {
+        const auto state_check = ensure_can_mutate_active_engine(engine);
+        if (state_check != FRAMEFLOW_RESULT_OK) {
+            return state_check;
+        }
+        if (basemap == nullptr || basemap->provider_id == nullptr || basemap->provider_id[0] == '\0') {
+            return set_error(
+                engine,
+                FRAMEFLOW_RESULT_INVALID_ARGUMENT,
+                "basemap config requires a non-empty provider_id",
+                true
+            );
+        }
+
+        const auto provider_id = normalize_basemap_provider(optional_c_string(basemap->provider_id));
+        const auto style_id = optional_c_string(basemap->style_id);
+        if (!is_supported_basemap_provider(provider_id)) {
+            return set_error(
+                engine,
+                FRAMEFLOW_RESULT_INVALID_ARGUMENT,
+                "basemap config uses an unsupported provider_id",
+                true
+            );
+        }
+        if (style_id.empty()) {
+            return set_error(
+                engine,
+                FRAMEFLOW_RESULT_INVALID_ARGUMENT,
+                "basemap config requires a non-empty style_id",
+                true
+            );
+        }
+
+        engine->basemap_provider_id = provider_id;
+        engine->basemap_style_id = style_id;
+        clear_error(engine);
+        reset_offscreen_renderer_for_basemap(engine);
         refresh_offscreen_frame(engine);
         refresh_diagnostics(engine);
         return FRAMEFLOW_RESULT_OK;
